@@ -153,30 +153,48 @@ st.markdown("""
 # MODEL LOADING (cached)
 # ─────────────────────────────────────────────
 
+import os
+import pickle
+import gdown
+import streamlit as st
+
+
 @st.cache_resource
 def load_model():
-    # Try JSON first (lightweight, no statsmodels needed)
-    if os.path.exists("zinb_params.json"):
-        with open("zinb_params.json", "r") as f:
-            return json.load(f), True
-    # Try pkl fallback
-    if os.path.exists("zinb_model.pkl"):
-        with open("zinb_model.pkl", "rb") as f:
-            return pickle.load(f), True
-    # Demo mode
-    return _build_mock_model(), False
+    model_path = "zinb_model.pkl"
+
+    # Download model only if not already present
+    if not os.path.exists(model_path):
+        file_id = "1LSdKu5IMsnyStWCTvNfG7U2chdiSadLL"
+        url = f"https://drive.google.com/uc?id={file_id}"
+
+        with st.spinner("Downloading trained ZINB model..."):
+            gdown.download(url, model_path, quiet=False)
+
+    try:
+        with open(model_path, "rb") as f:
+            model = pickle.load(f)
+
+        return model, True
+
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        return None, False
 
 
 def _build_mock_model():
-    return {
-        "inflate_const":      6.022735,
-        "inflate_log_views": -1.020894,
-        "inflate_log_carts": -19.460431,
-        "const":             -2.407025,
-        "log_views":          0.352021,
-        "log_carts":          0.919153,
-        "alpha":              0.670637,
-    }
+    """Demo model when zinb_model.pkl is not found."""
+    class MockZINB:
+        params = {"alpha": 0.67}
+
+        def predict(self, X, which="mean"):
+            lv = X["log_views"].values
+            lc = X["log_carts"].values
+            if which == "prob-main":
+                return np.clip(0.92 - 0.12 * lc - 0.03 * lv, 0.02, 0.98)
+            elif which == "lin":
+                return 0.25 + 0.45 * lc + 0.08 * lv
+    return MockZINB()
 
 
 model, model_loaded = load_model()
