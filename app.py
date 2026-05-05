@@ -153,15 +153,18 @@ st.markdown("""
 # MODEL LOADING (cached)
 # ─────────────────────────────────────────────
 
-@st.cache_resource
+@@st.cache_resource
 def load_model():
-    model_path = "zinb_model.pkl"
-    if os.path.exists(model_path):
-        with open(model_path, "rb") as f:
+    # Try JSON first (lightweight, no statsmodels needed)
+    if os.path.exists("zinb_params.json"):
+        with open("zinb_params.json", "r") as f:
+            return json.load(f), True
+    # Try pkl fallback
+    if os.path.exists("zinb_model.pkl"):
+        with open("zinb_model.pkl", "rb") as f:
             return pickle.load(f), True
-    else:
-        # Return mock model for demo purposes
-        return _build_mock_model(), False
+    # Demo mode
+    return _build_mock_model(), False
 
 
 def _build_mock_model():
