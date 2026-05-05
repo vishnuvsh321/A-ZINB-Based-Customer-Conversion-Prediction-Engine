@@ -46,32 +46,29 @@ class CustomerProfile:
 # 2. MODEL LOADING
 # ─────────────────────────────────────────────
 
-def load_zinb_model(model_path: str = "zinb_model.pkl"):
-    """
-    Load the pre-trained ZINB model from disk.
-    No retraining required.
-    """
-    with open(model_path, "rb") as f:
-        model = pickle.load(f)
-    return model
+def load_zinb_model(model_path: str = "zinb_params.json"):
+    """Load ZINB params from lightweight JSON — no pkl needed."""
+    with open(model_path, "r") as f:
+        params = json.load(f)
+    return params
+
 
 
 # ─────────────────────────────────────────────
 # 3. ZINB OUTPUT EXTRACTION
 # ─────────────────────────────────────────────
 
-def extract_zinb_outputs(model, log_views: float, log_carts: float) -> ZINBOutputs:
+def extract_zinb_outputs(params, log_views: float, log_carts: float) -> ZINBOutputs:
     """
-    Extract structural zero probability (p_zero) and
-    expected purchase intensity (mu) from the ZINB model.
+    Compute p_zero and mu directly from saved ZINB coefficients.
 
     ZINB model has two components:
       - Zero component:  logit(p_i) = gamma_0 + gamma_1*log_views + gamma_2*log_carts
-      - Count component: log(mu_i) = beta_0 + beta_1*log_views + beta_2*log_carts
+      - Count component: log(mu_i)  = beta_0  + beta_1*log_views  + beta_2*log_carts
 
     Parameters
     ----------
-    model      : fitted ZINB model (statsmodels ZeroInflatedNegativeBinomialP)
+    params     : dict loaded from zinb_params.json
     log_views  : log1p(total_views)
     log_carts  : log1p(total_carts)
 
@@ -79,34 +76,18 @@ def extract_zinb_outputs(model, log_views: float, log_carts: float) -> ZINBOutpu
     -------
     ZINBOutputs with p_zero, mu, alpha
     """
-    import pandas as pd
-
-    # Build a single-row input dataframe
-    X_new = np.array([[1.0, log_views, log_carts]])
-
-    # statsmodels ZINB predict returns E[Y] by default (combined)
-    # We need the component-level predictions
-    # predict(which='mean')    → E[Y] = (1-p)*mu
-    # predict(which='prob-zero') → P(Y=0) = p + (1-p)*NB(0|mu,alpha)
-    # predict(which='lin')     → linear predictor for count component (log scale)
-    # predict(which='prob-main') → p_i (zero-inflation probability)
-
-    # Extract params by name
-    params = model.params
-
-    # Zero-inflation component: logit(p) = inflate_const + inflate_log_views*lv + inflate_log_carts*lc
+    # Zero-inflation component
     logit_p = (params["inflate_const"]
                + params["inflate_log_views"] * log_views
                + params["inflate_log_carts"] * log_carts)
-    p_zero = float(1.0 / (1.0 + np.exp(-logit_p)))   # sigmoid
+    p_zero = float(1.0 / (1.0 + np.exp(-logit_p)))
 
-    # Count component: log(mu) = const + log_views*lv + log_carts*lc
+    # Count component
     log_mu = (params["const"]
               + params["log_views"] * log_views
               + params["log_carts"] * log_carts)
     mu = float(np.exp(log_mu))
 
-    # Dispersion
     alpha = float(params["alpha"])
 
     return ZINBOutputs(p_zero=p_zero, mu=mu, alpha=alpha)
