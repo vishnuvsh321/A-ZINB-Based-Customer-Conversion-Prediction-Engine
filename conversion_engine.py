@@ -60,23 +60,29 @@ def load_zinb_model(model_path: str = "zinb_params.json"):
 
 def extract_zinb_outputs(model, log_views: float, log_carts: float) -> ZINBOutputs:
     """
-    Robust ZINB prediction for deployed serialized models.
-    Uses numpy array instead of DataFrame to avoid pandas index mismatch.
+    Robust ZINB prediction with explicit exog and exog_infl.
     """
 
-    X_new = np.array([
-        [1.0, log_views, log_carts]
-    ])
+    X_new = np.array([[1.0, log_views, log_carts]])
+    X_infl = np.array([[1.0, log_views, log_carts]])
 
     expected_mean = float(
         np.asarray(
-            model.predict(X_new, which="mean")
+            model.predict(
+                exog=X_new,
+                exog_infl=X_infl,
+                which="mean"
+            )
         ).flatten()[0]
     )
 
     prob_main = float(
         np.asarray(
-            model.predict(X_new, which="prob-main")
+            model.predict(
+                exog=X_new,
+                exog_infl=X_infl,
+                which="prob-main"
+            )
         ).flatten()[0]
     )
 
@@ -93,7 +99,6 @@ def extract_zinb_outputs(model, log_views: float, log_carts: float) -> ZINBOutpu
         mu=mu,
         alpha=alpha
     )
-
 # ─────────────────────────────────────────────
 # 4. CONVERSION SCORE
 # ─────────────────────────────────────────────
@@ -240,11 +245,7 @@ def predict_customer(
 # ─────────────────────────────────────────────
 # 7. BATCH SCORING (for full dataset)
 # ─────────────────────────────────────────────
-
 def score_dataframe(model, df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Batch scoring using numpy design matrix for deployment robustness.
-    """
     df = df.copy()
 
     df["log_views"] = np.log1p(df["total_views"])
@@ -252,13 +253,22 @@ def score_dataframe(model, df: pd.DataFrame) -> pd.DataFrame:
     df["const"] = 1.0
 
     X = df[["const", "log_views", "log_carts"]].values
+    X_infl = X.copy()
 
     df["expected_mean"] = np.asarray(
-        model.predict(X, which="mean")
+        model.predict(
+            exog=X,
+            exog_infl=X_infl,
+            which="mean"
+        )
     ).flatten()
 
     df["prob_main"] = np.asarray(
-        model.predict(X, which="prob-main")
+        model.predict(
+            exog=X,
+            exog_infl=X_infl,
+            which="prob-main"
+        )
     ).flatten()
 
     df["p_zero"] = 1.0 - df["prob_main"]
