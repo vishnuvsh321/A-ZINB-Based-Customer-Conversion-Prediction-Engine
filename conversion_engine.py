@@ -60,21 +60,21 @@ def load_zinb_model(model_path: str = "zinb_params.json"):
 
 def extract_zinb_outputs(model, log_views: float, log_carts: float) -> ZINBOutputs:
     """
-    Extract outputs directly from fitted ZINB model predictions.
-    Works regardless of params naming/index type.
+    Extract ZINB outputs from trained model using exact training design matrix.
     """
 
     X_new = pd.DataFrame({
+        "const": [1.0],
         "log_views": [log_views],
         "log_carts": [log_carts]
     })
 
-    # Overall expected purchases E[Y] = (1-p)*mu
+    # Expected purchases: E[Y] = (1-p)*mu
     expected_mean = float(
         model.predict(X_new, which="mean")[0]
     )
 
-    # Probability observation belongs to count model
+    # Probability of belonging to count model
     prob_main = float(
         model.predict(X_new, which="prob-main")[0]
     )
@@ -83,12 +83,9 @@ def extract_zinb_outputs(model, log_views: float, log_carts: float) -> ZINBOutpu
     p_zero = 1.0 - prob_main
 
     # Conditional mean among buyers
-    if prob_main > 0:
-        mu = expected_mean / prob_main
-    else:
-        mu = 0.0
+    mu = expected_mean / prob_main if prob_main > 0 else 0.0
 
-    # Dispersion alpha
+    # Dispersion parameter
     try:
         alpha = float(model.params[-1])
     except:
