@@ -165,18 +165,15 @@ def load_model():
 
 
 def _build_mock_model():
-    """Demo model when zinb_model.pkl is not found."""
-    class MockZINB:
-        params = {"alpha": 0.67}
-
-        def predict(self, X, which="mean"):
-            lv = X["log_views"].values
-            lc = X["log_carts"].values
-            if which == "prob-main":
-                return np.clip(0.92 - 0.12 * lc - 0.03 * lv, 0.02, 0.98)
-            elif which == "lin":
-                return 0.25 + 0.45 * lc + 0.08 * lv
-    return MockZINB()
+    return {
+        "inflate_const":      6.022735,
+        "inflate_log_views": -1.020894,
+        "inflate_log_carts": -19.460431,
+        "const":             -2.407025,
+        "log_views":          0.352021,
+        "log_carts":          0.919153,
+        "alpha":              0.670637,
+    }
 
 
 model, model_loaded = load_model()
