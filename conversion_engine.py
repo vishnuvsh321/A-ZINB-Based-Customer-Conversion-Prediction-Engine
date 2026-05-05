@@ -60,7 +60,7 @@ def load_zinb_model(model_path: str = "zinb_params.json"):
 
 def extract_zinb_outputs(model, log_views: float, log_carts: float) -> ZINBOutputs:
     """
-    Extract ZINB outputs from trained model using exact training design matrix.
+    Extract outputs directly from fitted ZINB model predictions.
     """
 
     X_new = pd.DataFrame({
@@ -69,23 +69,17 @@ def extract_zinb_outputs(model, log_views: float, log_carts: float) -> ZINBOutpu
         "log_carts": [log_carts]
     })
 
-    # Expected purchases: E[Y] = (1-p)*mu
     expected_mean = float(
         model.predict(X_new, which="mean")[0]
     )
 
-    # Probability of belonging to count model
     prob_main = float(
         model.predict(X_new, which="prob-main")[0]
     )
 
-    # Structural zero probability
     p_zero = 1.0 - prob_main
-
-    # Conditional mean among buyers
     mu = expected_mean / prob_main if prob_main > 0 else 0.0
 
-    # Dispersion parameter
     try:
         alpha = float(model.params[-1])
     except:
@@ -247,39 +241,49 @@ def predict_customer(
 
 def score_dataframe(model, df: pd.DataFrame) -> pd.DataFrame:
     """
-    Score an entire DataFrame of customers.
-
-    Input df must have columns: total_views, total_carts
-
-    Returns df with appended columns:
-        log_views, log_carts, p_zero, mu, alpha,
-        conversion_score, segment
+    Score full customer dataframe using model.predict().
     """
+
     df = df.copy()
+
     df["log_views"] = np.log1p(df["total_views"])
     df["log_carts"] = np.log1p(df["total_carts"])
-
     df["const"] = 1.0
+
     X = df[["const", "log_views", "log_carts"]]
 
-    params = model.params
+    # Predict directly from fitted model
+    df["expected_mean"] = model.predict(X, which="mean")
+    df["prob_main"] = model.predict(X, which="prob-main")
 
-    logit_p = (params["inflate_const"]
-               + params["inflate_log_views"] * df["log_views"]
-               + params["inflate_log_carts"] * df["log_carts"])
-    df["p_zero"] = 1.0 / (1.0 + np.exp(-logit_p))
+    df["p_zero"] = 1.0 - df["prob_main"]
 
-    log_mu = (params["const"]
-              + params["log_views"] * df["log_views"]
-              + params["log_carts"] * df["log_carts"])
-    df["mu"] = np.exp(log_mu)
+    df["mu"] = np.where(
+        df["prob_main"] > 0,
+        df["expected_mean"] / df["prob_main"],
+        0.0
+    )
 
-    df["alpha"] = float(params["alpha"])
-    df["conversion_score"] = (1 - df["p_zero"]) * df["mu"]
+    try:
+        df["alpha"] = float(model.params[-1])
+    except:
+        df["alpha"] = 0.67
+
+    df["conversion_score"] = (
+        (1 - df["p_zero"]) * df["mu"]
+    )
 
     df["segment"] = df.apply(
-        lambda row: assign_segment(row["p_zero"], row["conversion_score"])[0],
-        axis=1,
+        lambda row: assign_segment(
+            row["p_zero"],
+            row["conversion_score"]
+        )[0],
+        axis=1
+    )
+
+    df.drop(
+        columns=["expected_mean", "prob_main"],
+        inplace=True
     )
 
     return df
