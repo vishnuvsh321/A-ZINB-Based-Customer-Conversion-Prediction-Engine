@@ -153,7 +153,7 @@ st.markdown("""
 # MODEL LOADING (cached)
 # ─────────────────────────────────────────────
 
-@@st.cache_resource
+@st.cache_resource
 def load_model():
     # Try JSON first (lightweight, no statsmodels needed)
     if os.path.exists("zinb_params.json"):
