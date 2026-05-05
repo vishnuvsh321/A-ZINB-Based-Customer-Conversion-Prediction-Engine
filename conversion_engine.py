@@ -60,21 +60,24 @@ def load_zinb_model(model_path: str = "zinb_params.json"):
 
 def extract_zinb_outputs(model, log_views: float, log_carts: float) -> ZINBOutputs:
     """
-    Extract outputs directly from fitted ZINB model predictions.
+    Robust ZINB prediction for deployed serialized models.
+    Uses numpy array instead of DataFrame to avoid pandas index mismatch.
     """
 
-    X_new = pd.DataFrame({
-        "const": [1.0],
-        "log_views": [log_views],
-        "log_carts": [log_carts]
-    })
+    X_new = np.array([
+        [1.0, log_views, log_carts]
+    ])
 
     expected_mean = float(
-        model.predict(X_new, which="mean")[0]
+        np.asarray(
+            model.predict(X_new, which="mean")
+        ).flatten()[0]
     )
 
     prob_main = float(
-        model.predict(X_new, which="prob-main")[0]
+        np.asarray(
+            model.predict(X_new, which="prob-main")
+        ).flatten()[0]
     )
 
     p_zero = 1.0 - prob_main
@@ -90,7 +93,6 @@ def extract_zinb_outputs(model, log_views: float, log_carts: float) -> ZINBOutpu
         mu=mu,
         alpha=alpha
     )
-
 
 # ─────────────────────────────────────────────
 # 4. CONVERSION SCORE
@@ -241,20 +243,23 @@ def predict_customer(
 
 def score_dataframe(model, df: pd.DataFrame) -> pd.DataFrame:
     """
-    Score full customer dataframe using model.predict().
+    Batch scoring using numpy design matrix for deployment robustness.
     """
-
     df = df.copy()
 
     df["log_views"] = np.log1p(df["total_views"])
     df["log_carts"] = np.log1p(df["total_carts"])
     df["const"] = 1.0
 
-    X = df[["const", "log_views", "log_carts"]]
+    X = df[["const", "log_views", "log_carts"]].values
 
-    # Predict directly from fitted model
-    df["expected_mean"] = model.predict(X, which="mean")
-    df["prob_main"] = model.predict(X, which="prob-main")
+    df["expected_mean"] = np.asarray(
+        model.predict(X, which="mean")
+    ).flatten()
+
+    df["prob_main"] = np.asarray(
+        model.predict(X, which="prob-main")
+    ).flatten()
 
     df["p_zero"] = 1.0 - df["prob_main"]
 
@@ -269,9 +274,7 @@ def score_dataframe(model, df: pd.DataFrame) -> pd.DataFrame:
     except:
         df["alpha"] = 0.67
 
-    df["conversion_score"] = (
-        (1 - df["p_zero"]) * df["mu"]
-    )
+    df["conversion_score"] = (1 - df["p_zero"]) * df["mu"]
 
     df["segment"] = df.apply(
         lambda row: assign_segment(
