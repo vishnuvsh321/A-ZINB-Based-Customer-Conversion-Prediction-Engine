@@ -58,39 +58,47 @@ def load_zinb_model(model_path: str = "zinb_params.json"):
 # 3. ZINB OUTPUT EXTRACTION
 # ─────────────────────────────────────────────
 
-def extract_zinb_outputs(params, log_views: float, log_carts: float) -> ZINBOutputs:
+def extract_zinb_outputs(model, log_views: float, log_carts: float) -> ZINBOutputs:
     """
-    Compute p_zero and mu directly from saved ZINB coefficients.
-
-    ZINB model has two components:
-      - Zero component:  logit(p_i) = gamma_0 + gamma_1*log_views + gamma_2*log_carts
-      - Count component: log(mu_i)  = beta_0  + beta_1*log_views  + beta_2*log_carts
-
-    Parameters
-    ----------
-    params     : dict loaded from zinb_params.json
-    log_views  : log1p(total_views)
-    log_carts  : log1p(total_carts)
-
-    Returns
-    -------
-    ZINBOutputs with p_zero, mu, alpha
+    Extract outputs directly from fitted ZINB model predictions.
+    Works regardless of params naming/index type.
     """
-    # Zero-inflation component
-    logit_p = (params["inflate_const"]
-               + params["inflate_log_views"] * log_views
-               + params["inflate_log_carts"] * log_carts)
-    p_zero = float(1.0 / (1.0 + np.exp(-logit_p)))
 
-    # Count component
-    log_mu = (params["const"]
-              + params["log_views"] * log_views
-              + params["log_carts"] * log_carts)
-    mu = float(np.exp(log_mu))
+    X_new = pd.DataFrame({
+        "log_views": [log_views],
+        "log_carts": [log_carts]
+    })
 
-    alpha = float(params["alpha"])
+    # Overall expected purchases E[Y] = (1-p)*mu
+    expected_mean = float(
+        model.predict(X_new, which="mean")[0]
+    )
 
-    return ZINBOutputs(p_zero=p_zero, mu=mu, alpha=alpha)
+    # Probability observation belongs to count model
+    prob_main = float(
+        model.predict(X_new, which="prob-main")[0]
+    )
+
+    # Structural zero probability
+    p_zero = 1.0 - prob_main
+
+    # Conditional mean among buyers
+    if prob_main > 0:
+        mu = expected_mean / prob_main
+    else:
+        mu = 0.0
+
+    # Dispersion alpha
+    try:
+        alpha = float(model.params[-1])
+    except:
+        alpha = 0.67
+
+    return ZINBOutputs(
+        p_zero=p_zero,
+        mu=mu,
+        alpha=alpha
+    )
 
 
 # ─────────────────────────────────────────────
