@@ -7,13 +7,13 @@ Project: Zero-Inflated Count Modeling of Customer Purchases in E-Commerce Platfo
 Student: VISHNU B | Reg: 24MSKR0023 | MSc Data Science 2024-26
 Guide: ROHINI S NAIR
 """
-
 import streamlit as st
 import numpy as np
 import pandas as pd
 import pickle
 import os
 import io
+import gdown
 from conversion_engine import (
     predict_customer,
     score_dataframe,
@@ -152,11 +152,6 @@ st.markdown("""
 # ─────────────────────────────────────────────
 # MODEL LOADING (cached)
 # ─────────────────────────────────────────────
-
-import os
-import pickle
-import gdown
-import streamlit as st
 
 
 @st.cache_resource
